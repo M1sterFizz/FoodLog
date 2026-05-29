@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<title>Hero's Fuel Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Lora:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet"/>
+<style>
+:root {
+  --ink: #1a1410;
+  --parchment: #f5eedc;
+  --parchment-dark: #e8ddc4;
+  --parchment-deep: #d4c9a8;
+  --gold: #b8860b;
+  --gold-bright: #d4a017;
+  --gold-light: #e8c547;
+  --gold-pale: #f5e090;
+  --brown: #5c3d1e;
+  --brown-light: #8b6340;
+  --brown-pale: #c4a882;
+  --red: #8b2b1a;
+  --green-dark: #2d4a2d;
+  --green: #4a7c4a;
+  --text: #2a1e0f;
+  --text-muted: #6b5030;
+  --text-faint: #a0876a;
+  --border: rgba(92,61,30,0.25);
+  --border-strong: rgba(92,61,30,0.5);
+  --shadow: rgba(26,20,16,0.15);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+  background: var(--parchment);
+  color: var(--text);
+  font-family: 'Lora', Georgia, serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Parchment texture via CSS */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(92,61,30,0.03) 28px, rgba(92,61,30,0.03) 29px),
+    repeating-linear-gradient(90deg, transparent, transparent 40px, rgba(92,61,30,0.015) 40px, rgba(92,61,30,0.015) 41px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#app { position: relative; z-index: 1; padding-bottom: 60px; }
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--parchment-dark); }
+::-webkit-scrollbar-thumb { background: var(--brown-pale); border-radius: 4px; }
+
+/* ── Animations ── */
+@keyframes fadeUp { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes quillDraw { from { stroke-dashoffset: 200; } to { stroke-dashoffset: 0; } }
+@keyframes shimmer { 0%,100% { opacity:.7; } 50% { opacity:1; } }
+@keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(-8px); } to { opacity:1; transform:translateX(-50%) translateY(0); } }
+@keyframes savedPulse { 0% { opacity:1; } 100% { opacity:0; } }
+
+/* ── Header ── */
+#header {
+  background: linear-gradient(180deg, #2a1e0f 0%, #3d2b14 60%, #4a3520 100%);
+  padding: 32px 20px 24px;
+  text-align: center;
+  border-bottom: 3px solid var(--gold);
+  position: relative;
+  overflow: hidden;
+}
+#header::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold-light), transparent);
+}
+
+.header-ornament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+.ornament-line {
+  flex: 1;
+  max-width: 80px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--gold));
+}
+.ornament-line.right { background: linear-gradient(90deg, var(--gold), transparent); }
+
+#header h1 {
+  font-family: 'Cinzel', serif;
+  font-size: clamp(20px, 5.5vw, 28px);
+  font-weight: 700;
+  color: var(--gold-light);
+  letter-spacing: 4px;
+  text-shadow: 0 2px 12px rgba(212,160,23,0.4);
+  margin-bottom: 4px;
+}
+.header-sub {
+  font-family: 'Cinzel', serif;
+  font-size: 10px;
+  color: var(--brown-pale);
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  opacity: .8;
+}
+
+/* Streak + XP row */
+.header-stats {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.hstat {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(212,160,23,0.3);
+  padding: 7px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hstat-icon { font-size: 16px; }
+.hstat-label { font-family:'Cinzel',serif; font-size:9px; color:var(--brown-pale); letter-spacing:1px; text-transform:uppercase; }
+.hstat-val { font-family:'Cinzel',serif; font-size:15px; font-weight:700; color:var(--gold-light); }
+
+/* Rank strip */
+.rank-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(184,134,11,0.1);
+  border: 1px solid rgba(184,134,11,0.35);
+  padding: 8px 20px;
+}
+.rank-icon { font-size: 18px; }
+.rank-name { font-family:'Cinzel',serif; font-size:11px; color:var(--gold-pale); letter-spacing:1.5px; }
+.rank-xp { font-size:11px; color:var(--brown-pale); }
+
+/* XP bar */
+.xp-bar-wrap { max-width:300px; margin:12px auto 0; padding:0 6px; }
+.xp-labels { display:flex; justify-content:space-between; font-family:'Cinzel',serif; font-size:9px; color:var(--brown-pale); margin-bottom:4px; letter-spacing:.5px; }
+.xp-track { height:5px; background:rgba(255,255,255,0.08); border:1px solid rgba(184,134,11,0.3); }
+.xp-fill { height:100%; background:linear-gradient(90deg,var(--gold),var(--gold-light)); transition:width .6s cubic-bezier(.34,1.56,.64,1); }
+
+/* ── Quote bar ── */
+#quote-bar {
+  background: #2a1e0f;
+  border-bottom: 1px solid rgba(184,134,11,0.2);
+  padding: 10px 44px;
+  text-align: center;
+}
+#quote-bar .q-text { font-style:italic; color:var(--brown-pale); font-size:13px; line-height:1.6; }
+#quote-bar .q-author { font-family:'Cinzel',serif; font-size:9px; color:var(--gold); letter-spacing:1.5px; margin-top:3px; opacity:.8; }
+
+/* ── Tabs ── */
+#tabs {
+  display: flex;
+  background: #221608;
+  border-bottom: 2px solid var(--gold);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.tab-btn {
+  flex: 1;
+  padding: 13px 6px;
+  background: none;
+  border: none;
+  color: var(--brown-pale);
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  letter-spacing: .5px;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  transition: all .2s;
+  margin-bottom: -2px;
+}
+.tab-btn.active { color: var(--gold-light); border-bottom-color: var(--gold-light); background: rgba(212,160,23,0.06); }
+.tab-btn:hover:not(.active) { color: var(--gold-pale); background: rgba(212,160,23,0.04); }
+
+/* ── Tab content ── */
+.tab-pane { display:none; padding:20px 16px; max-width:600px; margin:0 auto; animation:fadeUp .25s ease; }
+.tab-pane.active { display:block; }
+
+/* ── Section heading ── */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.section-title { font-family:'Cinzel',serif; font-size:18px; font-weight:700; color:var(--brown); letter-spacing:2px; }
+.section-sub { color:var(--text-muted); font-size:13px; font-style:italic; margin-bottom:20px; }
+
+/* ── Day header row ── */
+.day-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+.day-label { font-family:'Cinzel',serif; font-size:9px; color:var(--text-faint); letter-spacing:2px; text-transform:uppercase; margin-bottom:2px; }
+.day-date { font-family:'Cinzel',serif; font-size:14px; color:var(--brown); letter-spacing:.5px; }
+.day-complete { text-align:right; }
+.completion-pct { font-family:'Cinzel',serif; font-size:28px; font-weight:700; color:var(--gold); transition:color .3s; }
+
+/* ── Segment bar ── */
+.seg-bar { display:flex; gap:3px; margin-bottom:22px; }
+.seg { flex:1; height:5px; border:1px solid var(--border); transition:background .35s; }
+.seg.filled { background:linear-gradient(90deg,var(--gold),var(--gold-light)); border-color:var(--gold); }
+.seg.empty { background:rgba(92,61,30,0.07); }
+
+/* ── Meal cards ── */
+.meals-grid { display:flex; flex-direction:column; gap:10px; margin-bottom:14px; }
+
+.meal-card {
+  background: #fffdf6;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brown-pale);
+  box-shadow: 0 2px 8px var(--shadow);
+  overflow: hidden;
+  transition: border-color .2s, box-shadow .2s;
+}
+.meal-card:focus-within {
+  border-color: var(--gold);
+  border-left-color: var(--gold-bright);
+  box-shadow: 0 3px 14px rgba(184,134,11,0.18);
+}
+.meal-card.has-content { border-left-color: var(--gold-bright); }
+
+.meal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.meal-header-left { display:flex; align-items:center; gap:9px; }
+.meal-icon { font-size:17px; }
+.meal-label { font-family:'Cinzel',serif; font-size:11px; font-weight:700; letter-spacing:1px; color:var(--brown); text-transform:uppercase; }
+.meal-peek { font-size:12px; color:var(--text-muted); font-style:italic; max-width:160px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.meal-right { display:flex; align-items:center; gap:8px; }
+.saved-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  opacity: 0;
+  transition: opacity .3s;
+}
+.saved-dot.show { opacity: 1; animation: savedPulse 2s ease forwards; }
+.chevron { font-size:11px; color:var(--text-faint); transition:transform .25s; }
+.meal-card.open .chevron { transform: rotate(180deg); }
+
+.meal-body { display:none; padding:0 14px 12px; }
+.meal-card.open .meal-body { display:block; }
+
+.meal-body textarea {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  padding: 10px 0 4px;
+  color: var(--text);
+  font-family: 'Lora', Georgia, serif;
+  font-size: 14px;
+  line-height: 1.7;
+  outline: none;
+  resize: vertical;
+  min-height: 60px;
+}
+.meal-body textarea::placeholder { color:var(--brown-pale); }
+
+.meal-save-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+.meal-hint { font-size:11px; color:var(--text-faint); font-style:italic; }
+.btn-save-meal {
+  background: linear-gradient(135deg, var(--brown), var(--gold));
+  color: #fff8e8;
+  border: none;
+  padding: 8px 18px;
+  font-family: 'Cinzel', serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .5px;
+  cursor: pointer;
+  transition: all .2s;
+  box-shadow: 0 3px 10px rgba(92,61,30,0.2);
+}
+.btn-save-meal:hover { transform:translateY(-1px); box-shadow:0 5px 14px rgba(92,61,30,0.3); }
+.btn-save-meal:active { transform:scale(.97); }
+
+/* ── Notes card ── */
+.notes-card {
+  background: #fffdf6;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--brown-pale);
+  box-shadow: 0 2px 8px var(--shadow);
+  padding: 14px;
+  margin-bottom: 14px;
+  transition: border-color .2s;
+}
+.notes-card:focus-within { border-left-color: var(--gold-bright); border-color: var(--gold); }
+.notes-card.has-content { border-left-color: var(--gold-bright); }
+.notes-label { font-family:'Cinzel',serif; font-size:10px; font-weight:700; letter-spacing:1.5px; color:var(--brown); text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:8px; }
+.notes-card textarea {
+  width:100%; background:transparent; border:none; border-top:1px solid var(--border);
+  padding:10px 0 4px; color:var(--text); font-family:'Lora',Georgia,serif;
+  font-size:14px; line-height:1.7; outline:none; resize:vertical; min-height:60px;
+}
+.notes-card textarea::placeholder { color:var(--brown-pale); }
+
+/* ── Seal button ── */
+.btn-seal {
+  width: 100%;
+  padding: 16px;
+  background: linear-gradient(135deg, #3d2b14, #6b4f1a, var(--gold-bright));
+  color: #fff8e8;
+  border: none;
+  font-family: 'Cinzel', serif;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 1.5px;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(92,61,30,0.3);
+  transition: all .2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-top: 1px solid rgba(255,220,100,0.3);
+}
+.btn-seal:hover { transform:translateY(-2px); box-shadow:0 10px 28px rgba(92,61,30,0.4); }
+.btn-seal:active { transform:scale(.97); }
+.btn-seal.sealed {
+  background: linear-gradient(135deg, var(--green-dark), var(--green));
+  box-shadow: 0 6px 20px rgba(45,74,45,0.3);
+}
+
+/* ── Wisdom box ── */
+.wisdom-box {
+  margin-top: 18px;
+  background: rgba(92,61,30,0.05);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--gold);
+  padding: 16px 18px;
+  position: relative;
+}
+.wisdom-label { font-family:'Cinzel',serif; font-size:9px; color:var(--gold); letter-spacing:2px; text-transform:uppercase; margin-bottom:6px; }
+.wisdom-text { font-style:italic; color:var(--text-muted); font-size:13px; line-height:1.8; }
+
+/* ── History tab ── */
+.hist-empty { text-align:center; padding:50px 20px; color:var(--text-faint); font-style:italic; }
+
+.hist-card {
+  background: #fffdf6;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border-strong);
+  box-shadow: 0 2px 8px var(--shadow);
+  padding: 16px 18px;
+  margin-bottom: 10px;
+  animation: fadeUp .2s ease;
+}
+.hist-card.sealed { border-left-color: var(--gold); }
+
+.hist-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+.hist-date { font-family:'Cinzel',serif; font-size:13px; color:var(--brown); letter-spacing:.5px; }
+.hist-badge { font-family:'Cinzel',serif; font-size:10px; letter-spacing:.5px; padding:3px 10px; border:1px solid; }
+.hist-badge.sealed { color:var(--green); border-color:var(--green-dark); background:rgba(74,124,74,0.08); }
+.hist-badge.open { color:var(--text-faint); border-color:var(--border); background:transparent; }
+
+.hist-meals { display:flex; flex-direction:column; gap:6px; }
+.hist-meal { display:flex; gap:8px; align-items:baseline; }
+.hist-meal-label { font-family:'Cinzel',serif; font-size:10px; color:var(--text-faint); letter-spacing:.5px; min-width:70px; flex-shrink:0; }
+.hist-meal-val { font-size:13px; color:var(--text); line-height:1.5; }
+.hist-notes-wrap { margin-top:10px; padding-left:12px; border-left:2px solid var(--border); }
+.hist-notes-val { font-size:12px; color:var(--text-muted); font-style:italic; line-height:1.6; }
+
+/* ── Backup bar ── */
+#backup-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--parchment-dark);
+  border-bottom: 1px solid var(--border);
+  padding: 9px 16px;
+  gap: 10px;
+}
+#backup-status { font-family:'Cinzel',serif; font-size:9px; color:var(--text-faint); letter-spacing:.5px; flex:1; }
+.bk-btn {
+  font-family:'Cinzel',serif; font-size:10px; font-weight:700; letter-spacing:.5px;
+  padding:6px 12px; border:none; cursor:pointer; transition:all .2s;
+}
+.bk-export { background:linear-gradient(135deg,var(--brown),var(--gold)); color:#fff8e8; }
+.bk-import { background:transparent; color:var(--green); border:1px solid var(--green-dark) !important; }
+.bk-export:hover, .bk-import:hover { transform:translateY(-1px); }
+
+/* ── Reminder modal ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(26,20,16,0.88);
+  z-index: 9000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+.modal-box {
+  background: linear-gradient(160deg, #fffdf6, #f5eedc);
+  max-width: 360px;
+  width: 100%;
+  padding: 36px 32px;
+  text-align: center;
+  border: 2px solid var(--gold);
+  box-shadow: 0 0 60px rgba(184,134,11,0.25), 0 20px 60px rgba(0,0,0,0.5);
+  animation: fadeUp .3s ease;
+}
+.modal-title { font-family:'Cinzel',serif; font-size:20px; font-weight:700; color:var(--brown); letter-spacing:2px; margin-bottom:12px; }
+.modal-body { color:var(--text-muted); font-size:14px; line-height:1.8; margin-bottom:8px; }
+.modal-wisdom { color:var(--text-faint); font-size:12px; font-style:italic; margin-bottom:24px; line-height:1.7; }
+.modal-divider { width:60px; height:1px; background:var(--gold); margin:0 auto 20px; opacity:.5; }
+.btn-accept {
+  width:100%; padding:15px; background:linear-gradient(135deg,var(--brown),var(--gold));
+  color:#fff8e8; border:none; font-family:'Cinzel',serif; font-weight:700;
+  font-size:13px; letter-spacing:1px; cursor:pointer; box-shadow:0 4px 16px rgba(92,61,30,0.3);
+  transition:all .2s;
+}
+.btn-accept:hover { transform:translateY(-2px); }
+
+/* ── Toast ── */
+#toast {
+  position: fixed; top:16px; left:50%; transform:translateX(-50%);
+  padding:10px 24px; font-family:'Cinzel',serif; font-weight:700; font-size:12px;
+  z-index:9999; letter-spacing:.5px; white-space:nowrap; display:none;
+  border:1px solid rgba(255,220,100,0.4); color:#fff8e8;
+  box-shadow:0 8px 24px rgba(0,0,0,0.4);
+  animation: toastIn .3s ease;
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- HEADER -->
+  <div id="header">
+    <div class="header-ornament">
+      <div class="ornament-line"></div>
+      <svg width="32" height="29" viewBox="0 0 40 36" fill="none" style="animation:shimmer 3s ease-in-out infinite">
+        <polygon points="20,2 34,28 6,28" fill="#d4a017" opacity="0.9"/>
+        <polygon points="7,30 20,30 13.5,19" fill="#3d2b14" opacity="0.85"/>
+        <polygon points="20,30 33,30 26.5,19" fill="#3d2b14" opacity="0.85"/>
+      </svg>
+      <div class="ornament-line right"></div>
+    </div>
+    <h1>HERO'S FUEL LOG</h1>
+    <p class="header-sub">The Scroll of Daily Discipline</p>
+
+    <div class="header-stats">
+      <div class="hstat">
+        <span class="hstat-icon">🔥</span>
+        <div>
+          <div class="hstat-label">Streak</div>
+          <div class="hstat-val" id="stat-streak">0 days</div>
+        </div>
+      </div>
+      <div class="hstat">
+        <span class="hstat-icon">📜</span>
+        <div>
+          <div class="hstat-label">Days Logged</div>
+          <div class="hstat-val" id="stat-days">0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="rank-strip">
+      <span class="rank-icon" id="rank-icon">🌿</span>
+      <div>
+        <div class="rank-name" id="rank-name">Rank 0 · Forest Sprite</div>
+        <div class="rank-xp" id="rank-xp">0 XP</div>
+      </div>
+    </div>
+    <div class="xp-bar-wrap">
+      <div class="xp-labels">
+        <span id="xp-cur">0</span><span id="xp-next">100 to next rank</span>
+      </div>
+      <div class="xp-track"><div class="xp-fill" id="xp-fill" style="width:0%"></div></div>
+    </div>
+  </div>
+
+  <!-- QUOTE BAR -->
+  <div id="quote-bar">
+    <p class="q-text" id="daily-quote"></p>
+    <p class="q-author" id="daily-author"></p>
+  </div>
+
+  <!-- TABS -->
+  <div id="tabs">
+    <button class="tab-btn active" onclick="switchTab('today')">📜 Today</button>
+    <button class="tab-btn" onclick="switchTab('history')">🗺️ History</button>
+  </div>
+
+  <!-- BACKUP BAR -->
+  <div id="backup-bar">
+    <span id="backup-status">No backup yet</span>
+    <div style="display:flex;gap:8px">
+      <button class="bk-btn bk-export" onclick="exportBackup()">⬆ Back Up</button>
+      <label class="bk-btn bk-import" for="import-file" style="cursor:pointer">⬇ Restore</label>
+      <input type="file" id="import-file" accept=".json" style="display:none" onchange="importBackup(event)"/>
+    </div>
+  </div>
+
+  <!-- TODAY TAB -->
+  <div class="tab-pane active" id="tab-today">
+    <div class="day-header">
+      <div>
+        <div class="day-label">Day of the Hero</div>
+        <div class="day-date" id="today-date"></div>
+      </div>
+      <div class="day-complete">
+        <div class="day-label">Scroll Complete</div>
+        <div class="completion-pct" id="completion-pct">0%</div>
+      </div>
+    </div>
+    <div class="seg-bar" id="seg-bar">
+      <div class="seg empty"></div><div class="seg empty"></div>
+      <div class="seg empty"></div><div class="seg empty"></div>
+      <div class="seg empty"></div>
+    </div>
+
+    <div class="meals-grid" id="meals-grid">
+      <!-- injected by JS -->
+    </div>
+
+    <!-- Notes -->
+    <div class="notes-card" id="notes-card">
+      <div class="notes-label">
+        <span>📖</span> How Did You Feel?
+      </div>
+      <textarea id="f-notes" rows="3" placeholder="Energy, bloating, cravings, spirit…"></textarea>
+      <div class="meal-save-row" style="margin-top:8px">
+        <span class="meal-hint">Saves automatically as you type</span>
+        <button class="btn-save-meal" onclick="saveMeal('notes')">Save Note</button>
+      </div>
+    </div>
+
+    <!-- Seal scroll -->
+    <button class="btn-seal" id="seal-btn" onclick="sealScroll()">
+      <svg width="16" height="14" viewBox="0 0 40 36"><polygon points="20,2 34,28 6,28" fill="#fff8e8" opacity="0.85"/><polygon points="7,30 20,30 13.5,19" fill="#6b4f1a" opacity="0.85"/><polygon points="20,30 33,30 26.5,19" fill="#6b4f1a" opacity="0.85"/></svg>
+      <span id="seal-btn-text">SEAL THE SCROLL · +20 XP</span>
+    </button>
+
+    <div class="wisdom-box">
+      <div class="wisdom-label">✦ The Traveller's Wisdom</div>
+      <div class="wisdom-text" id="wisdom-text"></div>
+    </div>
+  </div>
+
+  <!-- HISTORY TAB -->
+  <div class="tab-pane" id="tab-history">
+    <div class="section-head">
+      <svg width="18" height="16" viewBox="0 0 40 36"><polygon points="20,2 34,28 6,28" fill="#8b6340" opacity="0.9"/><polygon points="7,30 20,30 13.5,19" fill="#c4a882" opacity="0.7"/><polygon points="20,30 33,30 26.5,19" fill="#c4a882" opacity="0.7"/></svg>
+      <h2 class="section-title">Quest Log</h2>
+    </div>
+    <p class="section-sub" id="hist-count">No quests inscribed yet.</p>
+    <div id="hist-list"></div>
+  </div>
+
+</div>
+
+<!-- BOTTOM ACCENT -->
+<div style="position:fixed;bottom:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent);pointer-events:none;z-index:200"></div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- REMINDER MODAL -->
+<div class="modal-overlay" id="reminder-modal" style="display:none">
+  <div class="modal-box">
+    <p style="font-family:'Cinzel',serif;font-size:9px;color:var(--gold);letter-spacing:3px;margin-bottom:16px;text-transform:uppercase">Daily Quest</p>
+    <h2 class="modal-title">YOUR SCROLL AWAITS</h2>
+    <div class="modal-divider"></div>
+    <p class="modal-body">Today's provisions have not yet been recorded. Your discipline demands honesty — log as you go and seal the scroll before the day ends.</p>
+    <p class="modal-wisdom" id="reminder-wisdom"></p>
+    <button class="btn-accept" onclick="document.getElementById('reminder-modal').style.display='none'">⚔️ &nbsp;I Accept This Quest</button>
+  </div>
+</div>
+
+<script>
+// ── Constants ──────────────────────────────────────────────────────────────
+const MEALS = [
+  { key:'breakfast', icon:'🌅', label:'Breakfast', color:'#b8860b', placeholder:'Morning provisions — what did you break your fast with?' },
+  { key:'lunch',     icon:'☀️', label:'Lunch',     color:'#4a7c4a', placeholder:'Midday sustenance…' },
+  { key:'dinner',    icon:'🌙', label:'Dinner',    color:'#5c6b8b', placeholder:'Evening feast…' },
+  { key:'snacks',    icon:'🍎', label:'Snacks',    color:'#8b4a3a', placeholder:'Honest accounting of the small provisions, hero.' },
+];
+
+const QUOTES = [
+  { quote:"A small daily task, if it be truly daily, will beat the labours of a spasmodic Hercules.", author:"Anthony Trollope" },
+  { quote:"We are what we repeatedly do. Excellence, then, is not an act, but a habit.", author:"Aristotle" },
+  { quote:"The secret of your future is hidden in your daily routine.", author:"Mike Murdock" },
+  { quote:"Habits are the compound interest of self-improvement.", author:"James Clear" },
+  { quote:"Take care of your body. It's the only place you have to live.", author:"Jim Rohn" },
+  { quote:"Success is the sum of small efforts, repeated day in and day out.", author:"Robert Collier" },
+  { quote:"Motivation gets you started. Habit keeps you going.", author:"Jim Ryun" },
+  { quote:"Every day is another chance to get stronger, to eat better, to live healthier.", author:"Unknown" },
+  { quote:"The body achieves what the mind believes.", author:"Napoleon Hill" },
+  { quote:"It is not enough to take steps which may some day lead to a goal; each step must be itself a goal.", author:"Goethe" },
+];
+
+const WISDOM = [
+  "Even the mightiest warrior begins with a single honest meal.",
+  "Your quest is not one battle — it is ten thousand small daily choices.",
+  "The road to strength is paved with recorded breakfasts.",
+  "He who logs consistently conquers consistently.",
+  "Small disciplines, faithfully kept, become great strengths.",
+  "The hero who tracks their fuel is the hero who finishes the journey.",
+  "Discipline is choosing between what you want now and what you want most.",
+];
+
+const RANKS = [
+  { name:'Forest Sprite',    icon:'🌿', xp:0    },
+  { name:'Kokiri Scout',     icon:'🏹', xp:100  },
+  { name:'Hylian Guard',     icon:'🛡️', xp:250  },
+  { name:'Knight of Hyrule', icon:'⚔️', xp:500  },
+  { name:'Sheikah Shadow',   icon:'👁️', xp:900  },
+  { name:'Champion',         icon:'💎', xp:1400 },
+  { name:'Hero of Time',     icon:'🌟', xp:2100 },
+];
+
+const LS_KEY = 'herosFuelLog_v3';
+const LS_BK  = 'herosFuelLog_v3_backup';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let state = { logs:{}, streak:0, xp:0, lastSealed:null };
+
+function todayKey() { return new Date().toISOString().slice(0,10); }
+function dayOfYear() { return Math.floor((Date.now()-new Date(new Date().getFullYear(),0,0))/86400000); }
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (raw) {
+      const s = JSON.parse(raw);
+      state = { logs:s.logs||{}, streak:s.streak||0, xp:s.xp||0, lastSealed:s.lastSealed||null };
+    }
+  } catch(e) {}
+}
+
+function saveState() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch(e) {}
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function toast(msg, type='gold') {
+  const el = document.getElementById('toast');
+  const bg = {
+    gold: 'linear-gradient(135deg,#6b4f1a,#d4a017)',
+    green: 'linear-gradient(135deg,#2d4a2d,#4a7c4a)',
+    amber: 'linear-gradient(135deg,#7c4a1a,#c47a30)'
+  };
+  el.textContent = msg;
+  el.style.background = bg[type] || bg.gold;
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ el.style.display='none'; }, 3000);
+}
+
+// ── Rank helpers ───────────────────────────────────────────────────────────
+function getRank(xp) {
+  let r = 0;
+  RANKS.forEach((rank,i) => { if(xp >= rank.xp) r = i; });
+  return r;
+}
+function xpProgress(xp) {
+  const r = getRank(xp);
+  const next = RANKS[r+1];
+  if(!next) return { cur: xp - RANKS[r].xp, total: 999, pct: 100 };
+  const cur = xp - RANKS[r].xp, total = next.xp - RANKS[r].xp;
+  return { cur, total, pct: Math.round(cur/total*100) };
+}
+
+// ── Render header ──────────────────────────────────────────────────────────
+function renderHeader() {
+  const { xp, streak, logs } = state;
+  const r = getRank(xp);
+  const rank = RANKS[r];
+  const prog = xpProgress(xp);
+  const days = Object.values(logs).filter(e=>e.sealed).length;
+
+  document.getElementById('rank-icon').textContent = rank.icon;
+  document.getElementById('rank-name').textContent = `Rank ${r} · ${rank.name}`;
+  document.getElementById('rank-xp').textContent = `${xp} XP earned`;
+  document.getElementById('xp-cur').textContent = `${prog.cur} XP`;
+  document.getElementById('xp-next').textContent = RANKS[r+1] ? `${prog.total - prog.cur} to next rank` : 'Max Rank';
+  document.getElementById('xp-fill').style.width = prog.pct + '%';
+  document.getElementById('stat-streak').textContent = streak + ' days';
+  document.getElementById('stat-days').textContent = days;
+}
+
+// ── Render today's meal cards ──────────────────────────────────────────────
+function renderTodayForm() {
+  const tk = todayKey();
+  const entry = state.logs[tk] || {};
+  const grid = document.getElementById('meals-grid');
+  grid.innerHTML = '';
+
+  MEALS.forEach(m => {
+    const val = entry[m.key] || '';
+    const hasContent = val.trim().length > 0;
+    const card = document.createElement('div');
+    card.className = 'meal-card' + (hasContent ? ' has-content' : '');
+    card.id = 'card-' + m.key;
+    card.innerHTML = `
+      <div class="meal-header" onclick="toggleMeal('${m.key}')">
+        <div class="meal-header-left">
+          <span class="meal-icon">${m.icon}</span>
+          <span class="meal-label" style="color:${m.color}">${m.label}</span>
+          <span class="meal-peek" id="peek-${m.key}">${hasContent ? val : ''}</span>
+        </div>
+        <div class="meal-right">
+          <div class="saved-dot" id="dot-${m.key}"></div>
+          <span class="chevron">▾</span>
+        </div>
+      </div>
+      <div class="meal-body">
+        <textarea id="f-${m.key}" rows="3" placeholder="${m.placeholder}">${val}</textarea>
+        <div class="meal-save-row">
+          <span class="meal-hint">Changes save per meal</span>
+          <button class="btn-save-meal" onclick="saveMeal('${m.key}')">Save ${m.label}</button>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+
+    // Auto-save on blur
+    setTimeout(() => {
+      const ta = document.getElementById('f-' + m.key);
+      if(ta) {
+        ta.addEventListener('blur', () => saveMeal(m.key, true));
+        ta.addEventListener('input', () => updateCompletion());
+      }
+    }, 0);
+  });
+
+  // Notes
+  const notes = entry.notes || '';
+  document.getElementById('f-notes').value = notes;
+  const nc = document.getElementById('notes-card');
+  if(notes.trim()) nc.classList.add('has-content');
+  const notesTA = document.getElementById('f-notes');
+  notesTA.addEventListener('blur', () => saveMeal('notes', true));
+  notesTA.addEventListener('input', () => updateCompletion());
+
+  // Seal button
+  const sealBtn = document.getElementById('seal-btn');
+  const sealTxt = document.getElementById('seal-btn-text');
+  if(entry.sealed) {
+    sealBtn.classList.add('sealed');
+    sealTxt.textContent = '✓ SCROLL SEALED — UPDATE ANYTIME';
+  } else {
+    sealBtn.classList.remove('sealed');
+    sealTxt.textContent = 'SEAL THE SCROLL · +20 XP';
+  }
+
+  updateCompletion();
+
+  // Auto-open first empty meal (or first meal if all empty)
+  const firstEmpty = MEALS.find(m => !(entry[m.key]||'').trim());
+  if(firstEmpty) toggleMeal(firstEmpty.key, true);
+}
+
+function toggleMeal(key, forceOpen) {
+  const card = document.getElementById('card-' + key);
+  if(!card) return;
+  if(forceOpen) {
+    card.classList.add('open');
+  } else {
+    card.classList.toggle('open');
+  }
+}
+
+// ── Save a single meal field ───────────────────────────────────────────────
+function saveMeal(key, silent) {
+  const tk = todayKey();
+  if(!state.logs[tk]) state.logs[tk] = {};
+  const val = (document.getElementById('f-' + key)?.value || '').trim();
+  state.logs[tk][key] = val;
+  saveState();
+
+  // Update peek text
+  const peek = document.getElementById('peek-' + key);
+  if(peek) peek.textContent = val;
+
+  // Card has-content style
+  const card = document.getElementById('card-' + key);
+  if(card) card.classList.toggle('has-content', val.length > 0);
+
+  // Notes card
+  if(key === 'notes') {
+    const nc = document.getElementById('notes-card');
+    if(nc) nc.classList.toggle('has-content', val.length > 0);
+  }
+
+  // Saved dot
+  const dot = document.getElementById('dot-' + key);
+  if(dot) {
+    dot.classList.remove('show');
+    void dot.offsetWidth; // reflow
+    dot.classList.add('show');
+  }
+
+  if(!silent) toast(`${key.charAt(0).toUpperCase()+key.slice(1)} saved ✓`, 'green');
+  updateCompletion();
+}
+
+// ── Completion bar ─────────────────────────────────────────────────────────
+function updateCompletion() {
+  const fields = [...MEALS.map(m=>m.key), 'notes'];
+  const entry = state.logs[todayKey()] || {};
+  // Live read from DOM too
+  const filled = fields.filter(k => {
+    const el = document.getElementById('f-'+k);
+    return el ? el.value.trim().length > 0 : (entry[k]||'').trim().length > 0;
+  }).length;
+  const pct = Math.round(filled/fields.length*100);
+  const pctEl = document.getElementById('completion-pct');
+  pctEl.textContent = pct+'%';
+  pctEl.style.color = pct===100?'var(--green)':pct>60?'var(--gold-bright)':'var(--gold)';
+  const segs = document.querySelectorAll('#seg-bar .seg');
+  const filledSegs = Math.round(pct/100*5);
+  segs.forEach((s,i)=>{ s.className='seg '+(i<filledSegs?'filled':'empty'); });
+}
+
+// ── Seal scroll ────────────────────────────────────────────────────────────
+function sealScroll() {
+  // First save all current field values
+  [...MEALS.map(m=>m.key),'notes'].forEach(k => saveMeal(k, true));
+
+  const tk = todayKey();
+  const entry = state.logs[tk] || {};
+  const hasMeal = MEALS.some(m => (entry[m.key]||'').trim().length > 0);
+
+  if(!hasMeal) { toast('Record at least one meal first, hero! 🍽️', 'amber'); return; }
+
+  if(!entry.sealed) {
+    // Streak logic
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate()-1);
+    const yKey = yesterday.toISOString().slice(0,10);
+    state.streak = (state.logs[yKey]?.sealed || state.lastSealed === yKey) ? state.streak+1 : 1;
+    state.lastSealed = tk;
+    const filled = MEALS.filter(m=>(entry[m.key]||'').trim()).length;
+    const earned = 20 + filled*5;
+    state.xp += earned;
+    state.logs[tk].sealed = true;
+    saveState();
+    renderHeader();
+    toast(`+${earned} XP! Scroll sealed. The discipline grows. ✦`, 'gold');
+  } else {
+    // Just updating
+    state.logs[tk].sealed = true;
+    saveState();
+    toast('Scroll updated ✓', 'green');
+  }
+
+  renderTodayForm();
+}
+
+// ── History tab ────────────────────────────────────────────────────────────
+function renderHistory() {
+  const dates = Object.keys(state.logs).sort((a,b)=>b.localeCompare(a));
+  const countEl = document.getElementById('hist-count');
+  const listEl = document.getElementById('hist-list');
+
+  if(!dates.length) {
+    countEl.textContent = 'No quests inscribed yet. Begin today.';
+    listEl.innerHTML = '';
+    return;
+  }
+  countEl.textContent = `${dates.length} day${dates.length===1?'':'s'} inscribed in the scrolls`;
+
+  listEl.innerHTML = dates.map(date => {
+    const e = state.logs[date];
+    const mealsHtml = MEALS
+      .filter(m => (e[m.key]||'').trim())
+      .map(m => `<div class="hist-meal">
+        <span class="hist-meal-label">${m.icon} ${m.label}</span>
+        <span class="hist-meal-val">${e[m.key]}</span>
+      </div>`).join('');
+
+    const notesHtml = (e.notes||'').trim()
+      ? `<div class="hist-notes-wrap"><div class="hist-notes-val">${e.notes}</div></div>` : '';
+
+    const badge = e.sealed
+      ? '<span class="hist-badge sealed">✓ SEALED</span>'
+      : '<span class="hist-badge open">◻ IN PROGRESS</span>';
+
+    return `<div class="hist-card${e.sealed?' sealed':''}">
+      <div class="hist-top">
+        <span class="hist-date">${date}</span>
+        ${badge}
+      </div>
+      <div class="hist-meals">${mealsHtml || '<span style="color:var(--text-faint);font-style:italic;font-size:13px">No meals recorded.</span>'}</div>
+      ${notesHtml}
+    </div>`;
+  }).join('');
+}
+
+// ── Tab switching ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.tab-pane').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  const idx = ['today','history'].indexOf(name);
+  document.querySelectorAll('.tab-btn')[idx]?.classList.add('active');
+  if(name==='history') renderHistory();
+}
+
+// ── Export / Import ────────────────────────────────────────────────────────
+function exportBackup() {
+  const payload = JSON.stringify({...state, exportedAt: new Date().toISOString()}, null, 2);
+  const blob = new Blob([payload], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=`heros-fuel-log-${todayKey()}.json`; a.click();
+  URL.revokeObjectURL(url);
+  localStorage.setItem(LS_BK, new Date().toISOString());
+  updateBackupStatus();
+  toast('Scroll backed up! Keep it somewhere safe. 📜', 'gold');
+}
+
+function importBackup(e) {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const imp = JSON.parse(ev.target.result);
+      if(!imp.logs) { toast('Invalid backup file.', 'amber'); return; }
+      state = { logs:imp.logs||{}, streak:imp.streak||0, xp:imp.xp||0, lastSealed:imp.lastSealed||null };
+      saveState();
+      renderHeader();
+      renderTodayForm();
+      updateBackupStatus();
+      toast('Scroll restored! Your quest continues. ✦', 'gold');
+    } catch(err) { toast('Could not read backup.', 'amber'); }
+  };
+  reader.readAsText(file);
+  e.target.value='';
+}
+
+function updateBackupStatus() {
+  const last = localStorage.getItem(LS_BK);
+  const el = document.getElementById('backup-status');
+  if(!last){ el.textContent='⚠ No backup yet'; el.style.color='var(--red)'; return; }
+  const days = Math.floor((Date.now()-new Date(last))/86400000);
+  if(days===0){ el.textContent='✓ Backed up today'; el.style.color='var(--green)'; }
+  else if(days===1){ el.textContent='⚠ Last backup: yesterday'; el.style.color='var(--gold)'; }
+  else { el.textContent=`⚠ Last backup: ${days} days ago`; el.style.color='var(--red)'; }
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  loadState();
+
+  // Date
+  document.getElementById('today-date').textContent =
+    new Date().toLocaleDateString('en-CA', {weekday:'long', month:'long', day:'numeric'});
+
+  // Quote
+  const doy = dayOfYear();
+  const q = QUOTES[doy % QUOTES.length];
+  document.getElementById('daily-quote').textContent = `"${q.quote}"`;
+  document.getElementById('daily-author').textContent = `— ${q.author}`;
+
+  // Wisdom
+  document.getElementById('wisdom-text').textContent = WISDOM[doy % WISDOM.length];
+  document.getElementById('reminder-wisdom').textContent = `"${WISDOM[(doy+1) % WISDOM.length]}"`;
+
+  renderHeader();
+  renderTodayForm();
+  updateBackupStatus();
+
+  // Reminder if today not started
+  const tk = todayKey();
+  const entry = state.logs[tk];
+  const hasAnyMeal = entry && MEALS.some(m=>(entry[m.key]||'').trim());
+  if(!hasAnyMeal) {
+    setTimeout(()=>{ document.getElementById('reminder-modal').style.display='flex'; }, 800);
+  }
+});
+</script>
+</body>
+</html>
