@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Let's Get Faiz-ical 🎵💪</title>
+  <meta name="description" content="Greyskull LP workout tracker for new dads" />
+  <meta name="theme-color" content="#0f0f1a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; background: #0f0f1a; color: #fff; -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, 'Helvetica Neue', sans-serif; overscroll-behavior: none; }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
+    ::-webkit-scrollbar { display: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useCallback, useEffect } = React;
+
+    // ─── Constants ──────────────────────────────────────────────────────────────
+
+    const PROGRAM = {
+      A: [
+        { id: "squat",   name: "Squat",          sets: 3, reps: 5, amrap: true  },
+        { id: "ohp",     name: "Overhead Press",  sets: 3, reps: 5, amrap: true  },
+        { id: "chinup",  name: "Chinups",         sets: 3, reps: 8, amrap: false, bw: true },
+        { id: "row",     name: "Barbell Row",     sets: 3, reps: 5, amrap: true  },
+      ],
+      B: [
+        { id: "deadlift",name: "Deadlift",        sets: 1, reps: 5, amrap: true  },
+        { id: "bench",   name: "Bench Press",     sets: 3, reps: 5, amrap: true  },
+        { id: "pullup",  name: "Pullups",         sets: 3, reps: 6, amrap: false, bw: true },
+        { id: "dip",     name: "Bench Dips",      sets: 3, reps: 8, amrap: false },
+      ],
+    };
+
+    const STARTING_WEIGHTS = {
+      squat: 85, ohp: 50, chinup: 0, row: 80,
+      deadlift: 105, bench: 70, pullup: 0, dip: 5,
+    };
+
+    const INCREMENT = {
+      squat: 5, ohp: 2.5, chinup: 0, row: 5,
+      deadlift: 5, bench: 2.5, pullup: 0, dip: 2.5,
+    };
+
+    const INITIAL_STATE = {
+      weights: { ...STARTING_WEIGHTS },
+      nextWorkout: "A",
+      lastWorkoutDate: null,
+      sessionSets: {},
+      sessionStarted: false,
+      sessionWeights: null,
+      history: [],
+      bodyLog: [],
+      cardioLog: [],
+    };
+
+    const TABS = ["Workout", "History", "Body", "Cardio", "Settings"];
+    const TAB_ICONS = ["🏋️", "📋", "⚖️", "🚴", "⚙️"];
+
+    const RIDES = [
+      { name: "20 min Power Zone",   type: "Peloton", duration: 20, intensity: "Moderate" },
+      { name: "10 min HIIT Ride",    type: "Peloton", duration: 10, intensity: "High"     },
+      { name: "20 min Beginner Ride",type: "Peloton", duration: 20, intensity: "Low"      },
+      { name: "15 min Scenic Ride",  type: "Peloton", duration: 15, intensity: "Low"      },
+      { name: "30 min Endurance",    type: "Peloton", duration: 30, intensity: "Moderate" },
+    ];
+
+    // ─── Helpers ────────────────────────────────────────────────────────────────
+
+    function calcWarmups(workingWeight, bw) {
+      if (bw || workingWeight <= 45) return [];
+      const bar = 45;
+      if (workingWeight <= 65) return [{ pct: "bar", weight: bar, sets: 1, reps: 5 }];
+      const sets = [
+        { pct: "40%", weight: Math.round(workingWeight * 0.4 / 5) * 5, sets: 1, reps: 5 },
+        { pct: "60%", weight: Math.round(workingWeight * 0.6 / 5) * 5, sets: 1, reps: 3 },
+        { pct: "80%", weight: Math.round(workingWeight * 0.8 / 5) * 5, sets: 1, reps: 2 },
+      ];
+      if (sets[0].weight < bar) sets[0].weight = bar;
+      return sets;
+    }
+
+    function daysSince(dateStr) {
+      if (!dateStr) return null;
+      return Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000);
+    }
+
+    function calcDeload(weights, lastWorkoutDate) {
+      const days = daysSince(lastWorkoutDate);
+      if (!days || days < 7) return { needed: false, weights };
+      const missedWeeks = Math.floor((days - 4) / 7);
+      if (missedWeeks < 1) return { needed: false, weights };
+      const factor = Math.pow(0.9, missedWeeks);
+      const deloaded = {};
+      for (const k in weights) {
+        deloaded[k] = Math.round(weights[k] * factor / 2.5) * 2.5;
+      }
+      return { needed: true, missedWeeks, days, weights: deloaded };
+    }
+
+    function loadState() {
+      try {
+        const v = localStorage.getItem("faizical_state");
+        return v ? JSON.parse(v) : INITIAL_STATE;
+      } catch { return INITIAL_STATE; }
+    }
+
+    function saveState(s) {
+      try { localStorage.setItem("faizical_state", JSON.stringify(s)); } catch {}
+    }
+
+    // ─── Sub-components ─────────────────────────────────────────────────────────
+
+    function SetRow({ label, weight, reps, done, amrap, bw, onToggle }) {
+      return (
+        <div onClick={onToggle} style={{
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+          background: done ? "rgba(255,183,77,0.13)" : "rgba(255,255,255,0.04)",
+          border: `1px solid ${done ? "rgba(255,183,77,0.4)" : "rgba(255,255,255,0.08)"}`,
+          marginBottom: 6, transition: "background 0.2s, border 0.2s",
+          userSelect: "none", WebkitUserSelect: "none",
+        }}>
+          <div style={{
+            width: 22, height: 22, borderRadius: "50%", flexShrink: 0,
+            border: `2px solid ${done ? "#FFB74D" : "rgba(255,255,255,0.25)"}`,
+            background: done ? "#FFB74D" : "transparent",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "all 0.2s",
+          }}>
+            {done && <span style={{ fontSize: 11, color: "#1a1a2e", fontWeight: 900 }}>✓</span>}
+          </div>
+          <span style={{ flex: 1, fontSize: 13, color: done ? "#FFB74D" : "rgba(255,255,255,0.7)", fontFamily: "monospace" }}>
+            {label}
+          </span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: done ? "#FFB74D" : "rgba(255,255,255,0.9)", fontFamily: "monospace" }}>
+            {bw ? "BW" : `${weight}lb`} × {reps}{amrap ? "+" : ""}
+          </span>
+        </div>
+      );
+    }
+
+    function ExerciseCard({ exercise, workingWeight, completedSets, onToggleSet }) {
+      const warmups = calcWarmups(workingWeight, exercise.bw);
+      const workingDone = completedSets.filter(i => i >= warmups.length).length;
+
+      return (
+        <div style={{
+          background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 14, padding: 16, marginBottom: 14,
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+            <span style={{ fontWeight: 800, fontSize: 15, letterSpacing: 0.3 }}>{exercise.name}</span>
+            <span style={{
+              fontSize: 11, padding: "3px 8px", borderRadius: 20, fontWeight: 700,
+              background: workingDone === exercise.sets ? "rgba(255,183,77,0.2)" : "rgba(255,255,255,0.08)",
+              color: workingDone === exercise.sets ? "#FFB74D" : "rgba(255,255,255,0.5)",
+            }}>
+              {workingDone}/{exercise.sets} working
+            </span>
+          </div>
+
+          {warmups.length > 0 && (
+            <div style={{ marginBottom: 8 }}>
+              <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 700, letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>Warmup</div>
+              {warmups.map((w, i) => (
+                <SetRow key={i}
+                  label={`${w.pct} · ${w.sets}×${w.reps}`}
+                  weight={w.weight} reps={w.reps} bw={false} amrap={false}
+                  done={completedSets.includes(i)}
+                  onToggle={() => onToggleSet(i)} />
+              ))}
+            </div>
+          )}
+
+          <div>
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.35)", fontWeight: 700, letterSpacing: 1, marginBottom: 6, textTransform: "uppercase" }}>Working Sets</div>
+            {Array.from({ length: exercise.sets }, (_, i) => {
+              const setIdx = warmups.length + i;
+              const isLast = i === exercise.sets - 1;
+              return (
+                <SetRow key={setIdx}
+                  label={`Set ${i + 1}${isLast && exercise.amrap ? " (AMRAP)" : ""}`}
+                  weight={workingWeight} reps={exercise.reps}
+                  bw={exercise.bw} amrap={isLast && exercise.amrap}
+                  done={completedSets.includes(setIdx)}
+                  onToggle={() => onToggleSet(setIdx)} />
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Tabs ────────────────────────────────────────────────────────────────────
+
+    function WorkoutTab({ state, setState }) {
+      const { weights, nextWorkout, lastWorkoutDate, sessionSets, sessionStarted } = state;
+      const deload = calcDeload(weights, lastWorkoutDate);
+      const effectiveWeights = deload.needed && !sessionStarted ? deload.weights : weights;
+      const workout = PROGRAM[nextWorkout];
+      const [showDeloadBanner, setShowDeloadBanner] = useState(deload.needed && !sessionStarted);
+
+      const handleToggleSet = useCallback((exId, setIdx) => {
+        setState(prev => {
+          const cur = prev.sessionSets[exId] || [];
+          const next = cur.includes(setIdx) ? cur.filter(i => i !== setIdx) : [...cur, setIdx];
+          return { ...prev, sessionSets: { ...prev.sessionSets, [exId]: next } };
+        });
+      }, [setState]);
+
+      const sessionW = state.sessionWeights || effectiveWeights;
+
+      const allDone = workout.every(ex => {
+        const warmups = calcWarmups(sessionW[ex.id], ex.bw);
+        return (sessionSets[ex.id] || []).length >= warmups.length + ex.sets;
+      });
+
+      function startSession() {
+        setState(prev => ({ ...prev, sessionStarted: true, sessionSets: {}, sessionWeights: effectiveWeights }));
+        setShowDeloadBanner(false);
+      }
+
+      function finishWorkout() {
+        const now = new Date().toISOString();
+        const newWeights = { ...(state.sessionWeights || effectiveWeights) };
+        workout.forEach(ex => {
+          if (!ex.bw && ex.amrap) {
+            const warmups = calcWarmups(newWeights[ex.id], ex.bw);
+            if ((sessionSets[ex.id] || []).length >= warmups.length + ex.sets) {
+              newWeights[ex.id] = +(newWeights[ex.id] + INCREMENT[ex.id]).toFixed(1);
+            }
+          }
+        });
+        const histEntry = {
+          date: now, workout: nextWorkout,
+          weights: { ...(state.sessionWeights || effectiveWeights) },
+        };
+        setState(prev => ({
+          ...prev, weights: newWeights, lastWorkoutDate: now,
+          nextWorkout: nextWorkout === "A" ? "B" : "A",
+          sessionSets: {}, sessionStarted: false, sessionWeights: null,
+          history: [histEntry, ...(prev.history || [])],
+        }));
+      }
+
+      return (
+        <div>
+          {showDeloadBanner && (
+            <div style={{ background: "rgba(255,100,80,0.12)", border: "1px solid rgba(255,100,80,0.3)", borderRadius: 12, padding: 14, marginBottom: 16 }}>
+              <div style={{ fontWeight: 800, color: "#FF7043", marginBottom: 4 }}>⚠ Auto-Deload Detected</div>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.7)", lineHeight: 1.5 }}>
+                {deload.days} days since last session ({deload.missedWeeks} missed week{deload.missedWeeks > 1 ? "s" : ""}).
+                Weights reduced by {deload.missedWeeks * 10}%. You'll rebuild fast.
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+            <div>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)", fontWeight: 700, letterSpacing: 1, textTransform: "uppercase" }}>Next Up</div>
+              <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.5 }}>Workout {nextWorkout}</div>
+            </div>
+            {!sessionStarted ? (
+              <button onClick={startSession} style={{ background: "#FFB74D", color: "#1a1210", fontWeight: 900, border: "none", borderRadius: 10, padding: "10px 20px", fontSize: 14, cursor: "pointer" }}>
+                Start
+              </button>
+            ) : (
+              <button onClick={finishWorkout} disabled={!allDone} style={{
+                background: allDone ? "#66BB6A" : "rgba(255,255,255,0.1)",
+                color: allDone ? "#0d2010" : "rgba(255,255,255,0.35)",
+                fontWeight: 900, border: "none", borderRadius: 10, padding: "10px 20px",
+                fontSize: 14, cursor: allDone ? "pointer" : "not-allowed", transition: "all 0.3s",
+              }}>
+                Finish ✓
+              </button>
+            )}
+          </div>
+
+          {!sessionStarted && (
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.35)", marginBottom: 16, fontStyle: "italic" }}>
+              Tap Start to begin. Sets tracked live.
+            </div>
+          )}
+
+          {workout.map(ex => (
+            <ExerciseCard key={ex.id} exercise={ex}
+              workingWeight={sessionW[ex.id]}
+              completedSets={sessionSets[ex.id] || []}
+              onToggleSet={(setIdx) => handleToggleSet(ex.id, setIdx)} />
+          ))}
+
+          <div style={{ background: "rgba(100,181,246,0.08)", border: "1px solid rgba(100,181,246,0.2)", borderRadius: 12, padding: 14, marginTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#64B5F6", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Apple Health</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+              Web apps can't read HealthKit directly. After finishing, log in Health → Workouts → Add Workout → Strength Training.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function HistoryTab({ state }) {
+      const history = state.history || [];
+      if (!history.length) return (
+        <div style={{ textAlign: "center", color: "rgba(255,255,255,0.3)", paddingTop: 60, fontSize: 14 }}>
+          No sessions yet. Complete your first workout!
+        </div>
+      );
+      return (
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>Session History</div>
+          {history.map((h, i) => (
+            <div key={i} style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 12, padding: 14, marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                <span style={{ fontWeight: 800, color: "#FFB74D" }}>Workout {h.workout}</span>
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>
+                  {new Date(h.date).toLocaleDateString("en-CA", { month: "short", day: "numeric", year: "numeric" })}
+                </span>
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {PROGRAM[h.workout].map(ex => (
+                  <span key={ex.id} style={{ fontSize: 11, padding: "3px 8px", borderRadius: 6, background: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.6)", fontFamily: "monospace" }}>
+                    {ex.name}: {ex.bw ? "BW" : `${h.weights[ex.id]}lb`}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function BodyTab({ state, setState }) {
+      const [inputWeight, setInputWeight] = useState("");
+      const bodyLog = state.bodyLog || [];
+
+      function logWeight() {
+        const w = parseFloat(inputWeight);
+        if (!w || w < 80 || w > 400) return;
+        setState(prev => ({ ...prev, bodyLog: [{ date: new Date().toISOString(), weight: w }, ...(prev.bodyLog || [])] }));
+        setInputWeight("");
+      }
+
+      const recent = [...bodyLog].slice(0, 14).reverse();
+      const chartH = 120, chartW = 300;
+      const minW = recent.length ? Math.min(...recent.map(e => e.weight)) - 5 : 150;
+      const maxW = recent.length ? Math.max(...recent.map(e => e.weight)) + 5 : 220;
+      const points = recent.map((e, i) => ({
+        x: recent.length === 1 ? chartW / 2 : (i / (recent.length - 1)) * chartW,
+        y: chartH - ((e.weight - minW) / (maxW - minW)) * chartH,
+        w: e.weight, date: e.date,
+      }));
+      const pathD = points.length > 1 ? points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ") : "";
+
+      return (
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>Body Weight</div>
+          <div style={{ display: "flex", gap: 10, marginBottom: 20 }}>
+            <input type="number" placeholder="lbs" value={inputWeight}
+              onChange={e => setInputWeight(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && logWeight()}
+              style={{ flex: 1, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "12px 14px", color: "#fff", fontSize: 16, outline: "none" }} />
+            <button onClick={logWeight} style={{ background: "#FFB74D", color: "#1a1210", fontWeight: 900, border: "none", borderRadius: 10, padding: "12px 18px", fontSize: 14, cursor: "pointer" }}>Log</button>
+          </div>
+
+          {recent.length > 0 && (
+            <div style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 14, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1 }}>
+                Last {recent.length} Entries
+              </div>
+              <svg width="100%" viewBox={`0 0 ${chartW} ${chartH}`} style={{ overflow: "visible" }}>
+                {pathD && <>
+                  <defs>
+                    <linearGradient id="lg" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#FFB74D" stopOpacity="0.3" />
+                      <stop offset="100%" stopColor="#FFB74D" stopOpacity="0" />
+                    </linearGradient>
+                  </defs>
+                  <path d={`${pathD} L ${points[points.length-1].x} ${chartH} L ${points[0].x} ${chartH} Z`} fill="url(#lg)" />
+                  <path d={pathD} fill="none" stroke="#FFB74D" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </>}
+                {points.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="4" fill="#FFB74D" />)}
+              </svg>
+              <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{new Date(recent[0]?.date).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span>
+                <span style={{ fontSize: 14, fontWeight: 800, color: "#FFB74D" }}>{bodyLog[0]?.weight} lbs</span>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{new Date(recent[recent.length-1]?.date).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}</span>
+              </div>
+            </div>
+          )}
+
+          <div style={{ background: "rgba(100,181,246,0.08)", border: "1px solid rgba(100,181,246,0.2)", borderRadius: 12, padding: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 800, color: "#64B5F6", letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Apple Health Tip</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.5)", lineHeight: 1.6 }}>
+              Log weight in Health → Body Measurements → Weight. Smart scales may sync automatically.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function CardioTab({ state, setState }) {
+      const cardioLog = state.cardioLog || [];
+      const [selected, setSelected] = useState(null);
+      const [note, setNote] = useState("");
+      const intensityColor = { Low: "#66BB6A", Moderate: "#FFB74D", High: "#EF5350" };
+
+      function logCardio(ride) {
+        setState(prev => ({ ...prev, cardioLog: [{ date: new Date().toISOString(), ...ride, note }, ...(prev.cardioLog || [])] }));
+        setSelected(null);
+        setNote("");
+      }
+
+      return (
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 6 }}>Cardio & Peloton</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", marginBottom: 18, lineHeight: 1.5 }}>
+            New dad mode: 2 sessions/week, 10–20 min is plenty. Tap a ride to log it.
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>Quick Log</div>
+            {RIDES.map((ride, i) => (
+              <div key={i} onClick={() => setSelected(selected === i ? null : i)} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "12px 14px", borderRadius: 10, cursor: "pointer", marginBottom: 8,
+                background: selected === i ? "rgba(255,183,77,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${selected === i ? "rgba(255,183,77,0.4)" : "rgba(255,255,255,0.08)"}`,
+                transition: "all 0.2s",
+              }}>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>{ride.name}</div>
+                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>{ride.duration} min · {ride.type}</div>
+                </div>
+                <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 20, background: `${intensityColor[ride.intensity]}22`, color: intensityColor[ride.intensity], textTransform: "uppercase" }}>
+                  {ride.intensity}
+                </span>
+              </div>
+            ))}
+            {selected !== null && (
+              <div style={{ marginTop: 12 }}>
+                <input placeholder="Optional note..." value={note} onChange={e => setNote(e.target.value)}
+                  style={{ width: "100%", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 10, padding: "10px 14px", color: "#fff", fontSize: 13, outline: "none", marginBottom: 10 }} />
+                <button onClick={() => logCardio(RIDES[selected])} style={{ width: "100%", background: "#FFB74D", color: "#1a1210", fontWeight: 900, border: "none", borderRadius: 10, padding: 12, fontSize: 14, cursor: "pointer" }}>
+                  Log {RIDES[selected].name}
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>Recent Sessions</div>
+          {!cardioLog.length ? (
+            <div style={{ color: "rgba(255,255,255,0.25)", fontSize: 13, textAlign: "center", paddingTop: 20 }}>No cardio logged yet</div>
+          ) : cardioLog.slice(0, 8).map((c, i) => (
+            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, marginBottom: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{c.name}</div>
+                <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>{c.duration} min</div>
+              </div>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,0.35)" }}>
+                {new Date(c.date).toLocaleDateString("en-CA", { month: "short", day: "numeric" })}
+              </span>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    function SettingsTab({ state, setState }) {
+      const [showReset, setShowReset] = useState(false);
+      const deload = calcDeload(state.weights, state.lastWorkoutDate);
+
+      function updateWeight(id, val) {
+        const n = parseFloat(val);
+        if (!isNaN(n)) setState(prev => ({ ...prev, weights: { ...prev.weights, [id]: n } }));
+      }
+
+      function reset() {
+        setState({ ...INITIAL_STATE });
+        setShowReset(false);
+      }
+
+      const allExercises = [...PROGRAM.A, ...PROGRAM.B].filter((ex, i, arr) => arr.findIndex(e => e.id === ex.id) === i);
+
+      return (
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 900, marginBottom: 16 }}>Settings</div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>Working Weights</div>
+            {allExercises.map(ex => (
+              <div key={ex.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderRadius: 10, marginBottom: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>{ex.name}</span>
+                {ex.bw ? (
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.35)" }}>Bodyweight</span>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input type="number" value={state.weights[ex.id]} onChange={e => updateWeight(ex.id, e.target.value)}
+                      style={{ width: 60, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: 6, padding: "4px 8px", color: "#FFB74D", fontSize: 13, fontWeight: 700, textAlign: "right", outline: "none", fontFamily: "monospace" }} />
+                    <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)" }}>lb</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>Deload Status</div>
+            <div style={{ padding: 14, borderRadius: 12, background: deload.needed ? "rgba(255,100,80,0.08)" : "rgba(102,187,106,0.08)", border: `1px solid ${deload.needed ? "rgba(255,100,80,0.25)" : "rgba(102,187,106,0.25)"}` }}>
+              {deload.needed ? (
+                <>
+                  <div style={{ fontWeight: 800, color: "#FF7043", marginBottom: 4 }}>Deload recommended</div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                    {deload.days} days since last session. Weights will auto-reduce {deload.missedWeeks * 10}% when you start.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ fontWeight: 800, color: "#66BB6A", marginBottom: 4 }}>On track</div>
+                  <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)" }}>
+                    {state.lastWorkoutDate ? `Last session ${daysSince(state.lastWorkoutDate)} days ago.` : "No sessions logged yet."}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, color: "rgba(255,255,255,0.35)", marginBottom: 10 }}>Apple Health</div>
+            <div style={{ background: "rgba(100,181,246,0.08)", border: "1px solid rgba(100,181,246,0.2)", borderRadius: 12, padding: 14 }}>
+              <div style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6 }}>
+                <strong style={{ color: "#64B5F6" }}>HealthKit integration</strong> requires a native Swift/Xcode iOS app. This tracker saves everything locally and is ready to be ported to Swift for full Apple Health read/write.
+                <br /><br />
+                <strong style={{ color: "#64B5F6" }}>Right now:</strong> Health → Workouts → Add Workout → Strength Training.
+              </div>
+            </div>
+          </div>
+
+          <button onClick={() => setShowReset(true)} style={{ width: "100%", background: "rgba(239,83,80,0.12)", border: "1px solid rgba(239,83,80,0.3)", color: "#EF5350", fontWeight: 800, borderRadius: 10, padding: 14, cursor: "pointer", fontSize: 14 }}>
+            Reset All Data
+          </button>
+
+          {showReset && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }}>
+              <div style={{ background: "#1e1e2e", borderRadius: 16, padding: 24, border: "1px solid rgba(239,83,80,0.4)", maxWidth: 300, width: "100%" }}>
+                <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 10 }}>Reset everything?</div>
+                <div style={{ fontSize: 13, color: "rgba(255,255,255,0.5)", marginBottom: 20 }}>All history, weights, and logs will be cleared. This can't be undone.</div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => setShowReset(false)} style={{ flex: 1, background: "rgba(255,255,255,0.08)", border: "none", color: "#fff", borderRadius: 10, padding: 12, cursor: "pointer", fontWeight: 700 }}>Cancel</button>
+                  <button onClick={reset} style={{ flex: 1, background: "#EF5350", border: "none", color: "#fff", borderRadius: 10, padding: 12, cursor: "pointer", fontWeight: 900 }}>Reset</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─── App Shell ───────────────────────────────────────────────────────────────
+
+    function App() {
+      const [tab, setTab] = useState(0);
+      const [state, setStateRaw] = useState(loadState);
+
+      const setState = useCallback((updater) => {
+        setStateRaw(prev => {
+          const next = typeof updater === "function" ? updater(prev) : updater;
+          saveState(next);
+          return next;
+        });
+      }, []);
+
+      return (
+        <div style={{ minHeight: "100vh", background: "#0f0f1a", color: "#fff", fontFamily: "-apple-system, 'Helvetica Neue', sans-serif", maxWidth: 420, margin: "0 auto", paddingBottom: 80 }}>
+          {/* Header */}
+          <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: "#FFB74D", textTransform: "uppercase", marginBottom: 2 }}>Greyskull LP</div>
+            <div style={{ fontSize: 22, fontWeight: 900, letterSpacing: -0.5 }}>Let's Get Faiz-ical 🎵💪</div>
+          </div>
+
+          {/* Content */}
+          <div style={{ padding: "20px 20px 0" }}>
+            {tab === 0 && <WorkoutTab state={state} setState={setState} />}
+            {tab === 1 && <HistoryTab state={state} />}
+            {tab === 2 && <BodyTab state={state} setState={setState} />}
+            {tab === 3 && <CardioTab state={state} setState={setState} />}
+            {tab === 4 && <SettingsTab state={state} setState={setState} />}
+          </div>
+
+          {/* Bottom Nav */}
+          <div style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 420, background: "rgba(15,15,26,0.97)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", borderTop: "1px solid rgba(255,255,255,0.08)", display: "flex" }}>
+            {TABS.map((t, i) => (
+              <button key={i} onClick={() => setTab(i)} style={{ flex: 1, padding: "12px 4px 10px", background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 3, position: "relative" }}>
+                <span style={{ fontSize: 18 }}>{TAB_ICONS[i]}</span>
+                <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: tab === i ? "#FFB74D" : "rgba(255,255,255,0.3)", transition: "color 0.2s" }}>{t}</span>
+                {tab === i && <div style={{ position: "absolute", bottom: 0, width: 30, height: 2, background: "#FFB74D", borderRadius: 1 }} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
